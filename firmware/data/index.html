@@ -1,0 +1,299 @@
+<html>
+  <head>
+    <style>
+      body {
+        background-color: #010110;
+        display: flex;
+        flex-direction: column;
+        width: 100vw;
+        height: 100vh;
+        margin: 0px;
+        padding: 0px;
+        color: white;
+        font-size: 16pt;
+        font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+      }
+      select,
+      button {
+        padding: 10px;
+        font-size: 20px;
+        margin-left: 10px;
+        margin-right: 10px;
+      }
+      #app {
+        z-index: 10;
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+      }
+      .app-wrapper {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        margin-left: 20px;
+        margin-right:20px
+      }
+      .row {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+        margin-top: 10px;
+        margin-bottom: 10px;
+      }
+      #container {
+        padding: 50px;
+        position: absolute;
+        top: 0px;
+        bottom: 0px;
+        left: 0px;
+        right: 0px;
+      }
+      #meter {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+    </style>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <script src="https://unpkg.com/react@17/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js" crossorigin></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    </div>
+    <div id="container">
+      <canvas id="meter"></canvas>
+    </div>
+
+    <script type="text/babel">
+      const { useState, useEffect } = React
+
+      const App = () => {
+        const [isStreaming, setIsStreaming] = useState(false);
+        const [availableDevices, setAvailableDevices] = useState([]);
+        const [currentDevice, setCurrentDevice] = useState("default");
+        const [deviceError, setDeviceError] = useState(null);
+        useEffect(() => {
+          async function getDevices() {
+            const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const outputDevices = devices.filter((device) => device.kind === 'audiooutput');
+            return outputDevices;
+          }
+          getDevices().then(
+            (outputDevices) => {
+              console.log("Got audio devices", outputDevices)
+              setAvailableDevices(outputDevices);
+            },
+            (err) => {
+              setDeviceError("Error getting audio devices. You may need to go to chrome://flags and add this domain to the list of 'Insecure origins treated as secure'. You can still play the audio but it will come out of the default device");
+            });
+        }, []);
+        console.log(availableDevices);
+        const deviceToUse = availableDevices.find((device) => device.deviceId === currentDevice);
+        console.log("Will use device", deviceToUse);
+        return (
+          <div className="app-wrapper">
+          <div className="row" style={{display: (isStreaming ? 'none' : 'block') }}>
+            <button onClick={() => { setIsStreaming(true); startStreaming(null); }}>Analyze Only</button>
+            {availableDevices.length > 0 && <select value={currentDevice} onChange={(event => setCurrentDevice(event.target.value))}>
+              {availableDevices.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
+            </select>}
+            <button onClick={() => { setIsStreaming(true); startStreaming(deviceToUse) }}>Play Audio</button>
+          </div>
+          <div className="row" style={{color:'white'}}>
+            {deviceError}
+          </div>
+          </div>)
+      }
+      const domContainer = document.getElementById('app');
+      console.log(domContainer);
+      ReactDOM.render(<App/>, domContainer);
+
+      class FrequencyScope {
+        constructor(fftNode) {
+          this.draw = this.draw.bind(this);
+          this.resizeCanvasToDisplaySize =
+            this.resizeCanvasToDisplaySize.bind(this);
+          this.canvas = document.getElementById("meter");
+          this.ctx = this.canvas.getContext("2d");
+          this.fftNode = fftNode;
+          this.bufferLength = this.fftNode.frequencyBinCount;
+          this.dataArray = new Uint8Array(this.bufferLength);
+          this.maxValues = new Uint8Array(this.bufferLength);
+        }
+        resizeCanvasToDisplaySize() {
+          // see https://webglfundamentals.org/webgl/lessons/webgl-resizing-the-canvas.html
+          // Lookup the size the browser is displaying the canvas in CSS pixels.
+          const displayWidth = this.canvas.clientWidth;
+          const displayHeight = this.canvas.clientHeight;
+
+          // Check if the canvas is not the same size.
+          const needResize =
+            this.canvas.width !== displayWidth ||
+            this.canvas.height !== displayHeight;
+
+          if (needResize) {
+            // Make the canvas the same size
+            this.canvas.width = displayWidth;
+            this.canvas.height = displayHeight;
+          }
+        }
+        draw() {
+          requestAnimationFrame(this.draw);
+          this.resizeCanvasToDisplaySize();
+          const width = this.canvas.width;
+          const height = this.canvas.height;
+          this.fftNode.getByteFrequencyData(this.dataArray);
+          this.ctx.fillStyle = "#010110";
+          this.ctx.fillRect(0, 0, width, height);
+
+          var barWidth = Math.max(1, width / this.bufferLength);
+          var barHeight;
+          var x = 0;
+          for (var i = 0; i < this.bufferLength; i++) {
+            barHeight = this.dataArray[i];
+            if (barHeight > this.maxValues[i]) {
+              this.maxValues[i] = barHeight;
+            } else {
+              this.maxValues[i] = this.maxValues[i] * 0.999 + barHeight * 0.001;
+            }
+            const barColor = Math.max(0, 120 - barHeight / 2);
+            this.ctx.fillStyle = `hsl(${barColor}, 100%, 50%)`;
+            this.ctx.fillRect(
+              x,
+              height - (height * barHeight) / 255,
+              barWidth - 1,
+              (height * barHeight) / 255
+            );
+            const maxColor = Math.max(0, 120 - this.maxValues[i] / 2);
+            this.ctx.fillStyle = `hsl(${maxColor}, 100%, 50%)`;
+            this.ctx.fillRect(
+              x,
+              height - (height * this.maxValues[i]) / 255,
+              barWidth - 1,
+              1
+            );
+            x += barWidth;
+          }
+        }
+      }
+
+      class Player {
+        constructor(play=false, deviceToUse = null) {
+          this.flush = this.flush.bind(this);
+          this.addSamples = this.addSamples.bind(this);
+          // create an audio context to process/play our audio
+          this.audioCtx = new (window.AudioContext ||
+            window.webkitAudioContext)({ });
+          // we'll have an fft analyzer at the start of our pipeline
+          this.fftNode = this.audioCtx.createAnalyser();
+          this.fftNode.smoothingTimeConstant = 0.8;
+          this.fftNode.fftSize = 256;
+          // and we'll hook it up to our output
+          if (play) {
+            if (deviceToUse) {
+              // this was a pain in the arse to work out - why is this not documented properly?
+              const dst = this.audioCtx.createMediaStreamDestination()
+              this.fftNode.connect(dst);
+              const audioElement = document.createElement('audio');
+              audioElement.srcObject = dst.stream;
+              audioElement.setSinkId(deviceToUse.deviceId).then(console.log('success'), error => console.log(error));
+              audioElement.play();
+            }
+          } else {
+            this.fftNode.connect(this.audioCtx.destination);
+          }
+          // this will hold the samples that we've received from the websocket - we'll flush these out periodically
+          this.sampleBuffers = [];
+          this.totalSamples = 0;
+          // we'll use this to keep track of the current playback position
+          this.startTime = this.audioCtx.currentTime;
+          // flush the samples buffers every 200ms
+          setInterval(this.flush, 200);
+        }
+        addSamples(samples) {
+          // the samples should be signed 16 bit integers
+          const typedSamples = new Int16Array(
+            samples,
+            0,
+            Math.floor(samples.byteLength / 2)
+          );
+          // turn the samples into normlised floats
+          const float32 = new Float32Array(typedSamples.length);
+          for (let i = 0; i < typedSamples.length; i++) {
+            float32[i] = typedSamples[i] / 32768;
+          }
+          // add them our sample buffers
+          this.totalSamples += float32.length;
+          this.sampleBuffers.push(float32);
+        }
+        flush() {
+          // no samples in our buffer
+          if (this.sampleBuffers.length == 0) {
+            return;
+          }
+          // create a buffer to hold all the samples that have been captured so far
+          const bufferSource = this.audioCtx.createBufferSource();
+          const audioBuffer = this.audioCtx.createBuffer(
+            1,
+            this.totalSamples,
+            44100
+          );
+          // copy the samples into the buffer
+          let sampleIndex = 0;
+          while (this.sampleBuffers.length > 0) {
+            const buffer = this.sampleBuffers.shift();
+            const audioData = audioBuffer.getChannelData(0);
+            for (let i = 0; i < buffer.length; i++) {
+              audioData[sampleIndex] = buffer[i];
+              sampleIndex++;
+            }
+          }
+          // we've processed all the samples
+          this.totalSamples = 0;
+          // check to see if we've fallen behind the total duration of the audio
+          if (this.startTime < this.audioCtx.currentTime) {
+            this.startTime = this.audioCtx.currentTime;
+          }
+          console.log(
+            `start vs current ${this.startTime} vs ${this.audioCtx.currentTime} duration: ${audioBuffer.duration}`
+          );
+          bufferSource.buffer = audioBuffer;
+          // feed the samples into the fftNode - which will analyze the samples and then pass them onto the destination
+          bufferSource.connect(this.fftNode);
+          // this is when the samples should start playing
+          bufferSource.start(this.startTime);
+          // this is when the next set of samples should start playing
+          this.startTime += audioBuffer.duration;
+        }
+      }
+
+      // start streaming audio from the websocket
+      function startStreaming(deviceToUse) {
+        console.log("Starting stream");
+        let player = new Player(deviceToUse);
+        let frequencyScope = new FrequencyScope(player.fftNode);
+        // start the visualisation
+        frequencyScope.draw();
+        // open a websocket connection
+        const socket = new WebSocket("ws://microphone.local/audio_stream");
+        socket.binaryType = "arraybuffer";
+        socket.onopen = function () {
+          console.log("WebSocket opened");
+        };
+        socket.onmessage = function (message) {
+          player.addSamples(message.data);
+        };
+        socket.onclose = function () {
+          console.log("WebSocket closed");
+          player = null;
+          frequencyScope = null;
+        };
+      }
+    </script>
+  </body>
+</html>
