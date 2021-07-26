@@ -3,7 +3,7 @@
 
 void TCPSocketTransport::begin()
 {
-  Serial.printf("Connect to TCP socket microphone.local:9090 to try out TCP socket streaming");
+  Serial.println("Connect to TCP socket microphone.local:9090 to try out TCP socket streaming");
   server = new WiFiServer(9090);
   server->begin();
 }

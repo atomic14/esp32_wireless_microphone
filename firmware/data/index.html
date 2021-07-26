@@ -98,11 +98,11 @@
         return (
           <div className="app-wrapper">
           <div className="row" style={{display: (isStreaming ? 'none' : 'block') }}>
-            <button onClick={() => { setIsStreaming(true); startStreaming(null); }}>Analyze Only</button>
+            <button onClick={() => { setIsStreaming(true); startStreaming(false, null); }}>Analyze Only</button>
             {availableDevices.length > 0 && <select value={currentDevice} onChange={(event => setCurrentDevice(event.target.value))}>
               {availableDevices.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label}</option>)}
             </select>}
-            <button onClick={() => { setIsStreaming(true); startStreaming(deviceToUse) }}>Play Audio</button>
+            <button onClick={() => { setIsStreaming(true); startStreaming(true, deviceToUse) }}>Play Audio</button>
           </div>
           <div className="row" style={{color:'white'}}>
             {deviceError}
@@ -273,9 +273,9 @@
       }
 
       // start streaming audio from the websocket
-      function startStreaming(deviceToUse) {
+      function startStreaming(play, deviceToUse) {
         console.log("Starting stream");
-        let player = new Player(deviceToUse);
+        let player = new Player(play, deviceToUse);
         let frequencyScope = new FrequencyScope(player.fftNode);
         // start the visualisation
         frequencyScope.draw();
