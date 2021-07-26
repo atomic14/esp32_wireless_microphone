@@ -1,5 +1,3 @@
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/Z8Z734F5Y)
-
 # Intro
 
 You can watch a video of this working here: https://youtu.be/0jR-QNTfydA at around 4:23
